@@ -16,562 +16,606 @@ MANAGER = "@liiina_newq"
 WAITING_NFT_LINK = 1
 WAITING_PAYMENT_METHOD = 2
 WAITING_REQUISITES = 3
+WAITING_PAYMENT_CONFIRMATION = 4
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nft_bot")
 
 # ==================== ВАЛЮТЫ ПОД КАЖДЫЙ МЕТОД ====================
 PAYMENT_CURRENCY = [
-    ("USDT", "USDT"),   # 0  CryptoBot
-    ("USDT", "USDT"),   # 1  TRC20
-    ("TON",  "TON"),    # 2  Tonkeeper
-    ("UAH",  "грн"),    # 3  Украина
-    ("RUB",  "руб"),    # 4  Россия
-    ("USD",  "$"),      # 5  США
-    ("BYN",  "руб"),    # 6  Беларусь
-    ("KZT",  "тг"),     # 7  Казахстан
-    ("UZS",  "сум"),    # 8  Узбекистан
-    ("TRY",  "₺"),      # 9  Турция
-    ("AZN",  "₼"),      # 10 Азербайджан
+    ("USDT", "USDT"),     # 0 CryptoBot
+    ("USDT", "USDT"),     # 1 TRC20
+    ("TON", "TON"),       # 2 Tonkeeper
+    ("STARS", "⭐"),      # 3 Telegram Stars
+    ("UAH", "грн"),       # 4 Украина
+    ("RUB", "руб"),       # 5 Россия
+    ("USD", "$"),         # 6 США
+    ("BYN", "руб"),       # 7 Беларусь
+    ("KZT", "тг"),        # 8 Казахстан
+    ("UZS", "сум"),       # 9 Узбекистан
+    ("TRY", "₺"),         # 10 Турция
+    ("AZN", "₼"),         # 11 Азербайджан
 ]
 
-# Курсы к USD (февраль 2026)
+# Курсы к USD
 RATES = {
     "USDT": 1,
-    "TON":  0.19,   # ~5.3 TON за $1
-    "UAH":  41,
-    "RUB":  90,
-    "USD":  1,
-    "BYN":  3.2,
-    "KZT":  480,
-    "UZS":  12800,
-    "TRY":  32,
-    "AZN":  1.7,
+    "TON": 0.19,
+    "STARS": 0.0167,
+    "UAH": 41,
+    "RUB": 90,
+    "USD": 1,
+    "BYN": 3.2,
+    "KZT": 480,
+    "UZS": 12800,
+    "TRY": 32,
+    "AZN": 1.7,
 }
 
-# ==================== NFT ЦЕНЫ (реальный рынок февраль 2026, floor price в USD) ====================
-# Цены основаны на актуальных данных с Getgems / Tonnel / Fragment
-# Диапазон: от минимального floor до среднего listing price
-# Наше предложение = рынок × 1.30 (+30%)
-NFT_PRICES_USD = {
-    # Топовые коллекции (голубые фишки)
-    "plushpepe":   (6500,  8500),   # Plush Pepe — floor ~$6914, топ $295k
-    "plush":       (6500,  8500),   # алиас
-    "pepe":        (6500,  8500),   # алиас
-
-    # Средний сегмент (популярные коллекции)
-    "dragon":      (180,   420),    # Dragon — активно торгуется
-    "crystal":     (95,    250),    # Crystal Ball / Gem Signet
-    "gem":         (95,    250),    # алиас
-    "diamond":     (140,   380),    # Diamond Ring и подобные
-    "heart":       (55,    140),    # Heart-themed gifts
-    "star":        (45,    120),    # Star-themed
-    "loot":        (60,    160),    # Loot Bag
-    "gold":        (320,   850),    # Gold-серия (Gold Pepe ~$6500 TON)
-
-    # Базовый сегмент (массовые коллекции)
-    "cat":         (12,    35),     # Cat-themed
-    "bear":        (10,    28),     # Bear-themed
-    "dog":         (8,     22),     # Dog-themed
-    "duck":        (6,     18),     # Duck-themed
-    "bunny":       (8,     20),     # Jelly Bunny и подобные
-    "jelly":       (8,     20),     # алиас
-    "santa":       (5,     15),     # Santa Hat
-    "cake":        (4,     12),     # Homemade Cake
-    "wine":        (4,     12),     # Spiced Wine
-    "hat":         (5,     14),     # Hat-themed
-    "gift":        (5,     16),     # Gift-themed
+# ==================== NFT ЦЕНЫ ====================
+NFT_PRICES = {
+    "plushpepe": 7500, "plush": 7500, "pepe": 7500,
+    "dragon": 320, "crystal": 180, "gem": 180,
+    "diamond": 260, "heart": 100, "star": 85,
+    "loot": 120, "gold": 600, "cat": 24,
+    "bear": 20, "dog": 16, "duck": 13,
+    "bunny": 15, "jelly": 15, "santa": 11,
+    "cake": 9, "wine": 9, "hat": 10, "gift": 11,
 }
 
-def estimate_price_usd(nft_name):
-    """Оцениваем NFT по названию. Ищем совпадение по ключевым словам."""
+def get_price(nft_name):
+    """Получает рыночную цену NFT и цену с наценкой 30%"""
     name_lower = nft_name.lower().replace("-", "").replace("_", "")
-    for key, (lo, hi) in NFT_PRICES_USD.items():
+    
+    for key, price in NFT_PRICES.items():
         if key in name_lower:
-            base = round(random.uniform(lo, hi), 2)
-            our_price = round(base * 1.30, 2)
-            return base, our_price
-    # Неизвестный NFT — базовый диапазон масс-маркета
-    base = round(random.uniform(5, 30), 2)
+            our_price = round(price * 1.30, 2)
+            return price, our_price
+    
+    # Если NFT не найдена, генерируем случайную цену
+    base = round(random.uniform(10, 30), 2)
     our_price = round(base * 1.30, 2)
     return base, our_price
 
 def convert_price(usd_amount, currency_code):
+    """Конвертирует USD в указанную валюту"""
     rate = RATES.get(currency_code, 1)
-    if currency_code in ("USDT", "USD"):
-        return round(usd_amount, 2)
+    
     if currency_code == "TON":
-        return round(usd_amount / rate, 2)
-    return round(usd_amount * rate, 0)
+        return round(usd_amount / 0.19, 2)
+    elif currency_code == "STARS":
+        return round(usd_amount / 0.0167)
+    elif currency_code in ("USDT", "USD"):
+        return round(usd_amount, 2)
+    else:
+        return round(usd_amount * rate, 0)
 
 def format_price(amount, pay_idx):
+    """Форматирует цену для отображения"""
     currency_code, currency_label = PAYMENT_CURRENCY[pay_idx]
     converted = convert_price(amount, currency_code)
-    if currency_code in ("USDT", "USD"):
-        return "$" + str(converted) + " " + currency_code
+    
+    if currency_code == "USDT":
+        return f"{converted} USDT"
+    elif currency_code == "USD":
+        return f"${converted}"
     elif currency_code == "TON":
-        return str(converted) + " TON"
+        return f"{converted} TON"
+    elif currency_code == "STARS":
+        return f"{converted} ⭐"
     else:
-        return str(int(converted)) + " " + currency_label
+        return f"{int(converted)} {currency_label}"
 
 def is_nft_link(text):
+    """Проверяет, является ли текст ссылкой на NFT"""
     return bool(re.match(r'https?://t\.me/nft/[\w\-]+', text.strip()))
 
 def get_lang(context):
+    """Получает язык пользователя"""
     return context.user_data.get("lang", "ru")
 
 # ==================== TEXTS ====================
-
 WELCOME_RU = (
-    "🎁 *Добро пожаловать в Автоматическую Скупку NFT-подарков в Telegram!*\n\n"
-    "Мы — профессиональный сервис по выкупу NFT-подарков выше рыночной стоимости.\n"
-    "Наш бот автоматически оценивает ваш NFT по характеристикам: модель, фон, узор — "
-    "и предлагает вам цену *на 30% выше рынка* 📈\n\n"
-    "Тысячи успешных сделок. Быстрые выплаты. Полная безопасность.\n\n"
+    "🎁 *Добро пожаловать в скупку NFT-подарков!*\n\n"
+    "Я покупаю NFT-подарки на *30% дороже рыночной цены* 📈\n\n"
+    "💳 Доступные валюты: USDT, TON, Telegram Stars, RUB, UAH и другие\n\n"
     "Выберите действие ниже 👇"
 )
 
 WELCOME_EN = (
-    "🎁 *Welcome to the Automatic NFT Gift Buyout service in Telegram!*\n\n"
-    "We are a professional service that purchases NFT gifts above market value.\n"
-    "Our bot automatically evaluates your NFT by characteristics: model, background, pattern — "
-    "and offers you a price *30% above the market* 📈\n\n"
-    "Thousands of successful deals. Fast payouts. Full security.\n\n"
+    "🎁 *Welcome to NFT Gift Buyout!*\n\n"
+    "I buy NFT gifts at *30% above market price* 📈\n\n"
+    "💳 Available currencies: USDT, TON, Telegram Stars, RUB, UAH and more\n\n"
     "Choose an action below 👇"
 )
 
 HOW_DEAL_RU = (
-    "🤝 *Как проводится сделка?*\n\n"
-    "1. Вы присылаете ссылку на NFT-подарок\n"
-    "2. Бот считает рыночную цену по параметрам: модель, фон, узор\n"
-    "3. Вы выбираете способ оплаты\n"
-    "4. Бот озвучивает свою сумму в вашей валюте\n\n"
-    "_Пример:_ Я предлагаю вам за ваш NFT `https://t.me/nft/PlushPepe-2133` — *520 грн*\n"
-    "Если согласны — нажмите *Да*, если нет — *Нет*\n\n"
-    "5. При согласии — отправьте NFT менеджеру @liiina_newq\n"
-    "6. Менеджер проверяет подарок и переводит оплату на ваши реквизиты\n\n"
-    "⚡ Среднее время сделки: 5–15 минут"
+    "🤝 *Как проходит сделка:*\n\n"
+    "1️⃣ Отправьте ссылку на ваш NFT-подарок\n"
+    "2️⃣ Я проверю актуальную рыночную цену\n"
+    "3️⃣ Выберите удобный способ оплаты\n"
+    "4️⃣ Я покажу сумму в вашей валюте (+30% к рынку)\n"
+    "5️⃣ Подтвердите сделку\n"
+    "6️⃣ Отправьте NFT менеджеру\n"
+    "7️⃣ Получите оплату и нажмите \"💸 Я оплатил\"\n\n"
+    f"👤 Менеджер: {MANAGER}\n\n"
+    "⚡ Среднее время сделки: 5-10 минут"
 )
 
 HOW_DEAL_EN = (
-    "🤝 *How is the deal conducted?*\n\n"
-    "1. You send the NFT gift link\n"
-    "2. The bot calculates market price by: model, background, pattern\n"
-    "3. You choose a payment method\n"
-    "4. The bot announces its offer in your currency\n\n"
-    "_Example:_ I offer you for your NFT `https://t.me/nft/PlushPepe-2133` — *$8,983 USDT*\n"
-    "If you agree — press *Yes*, if not — *No*\n\n"
-    "5. If agreed — send the NFT to @liiina_newq\n"
-    "6. The manager verifies the gift and transfers payment to your details\n\n"
-    "⚡ Average deal time: 5–15 minutes"
+    "🤝 *How the deal works:*\n\n"
+    "1️⃣ Send your NFT gift link\n"
+    "2️⃣ I check the current market price\n"
+    "3️⃣ Choose your payment method\n"
+    "4️⃣ I show the amount in your currency (+30% above market)\n"
+    "5️⃣ Confirm the deal\n"
+    "6️⃣ Send NFT to the manager\n"
+    "7️⃣ Receive payment and press \"💸 I paid\"\n\n"
+    f"👤 Manager: {MANAGER}\n\n"
+    "⚡ Average deal time: 5-10 minutes"
 )
 
-SELL_ASK_LINK_RU = (
+SELL_ASK_RU = (
     "🔗 *Отправьте ссылку на ваш NFT-подарок*\n\n"
-    "Формат: `https://t.me/nft/НазваниеНФТ-Номер`\n\n"
-    "⚠️ Принимаются только NFT-подарки Telegram. "
-    "Убедитесь что ссылка ведёт именно на NFT, а не на что-то другое."
+    "Формат: `https://t.me/nft/Название-Номер`\n\n"
+    "Пример: `https://t.me/nft/PlushPepe-12345`"
 )
 
-SELL_ASK_LINK_EN = (
-    "🔗 *Send the link to your NFT gift*\n\n"
-    "Format: `https://t.me/nft/NFTName-Number`\n\n"
-    "⚠️ Only Telegram NFT gifts are accepted. "
-    "Make sure the link leads to an NFT, not something else."
+SELL_ASK_EN = (
+    "🔗 *Send your NFT gift link*\n\n"
+    "Format: `https://t.me/nft/Name-Number`\n\n"
+    "Example: `https://t.me/nft/PlushPepe-12345`"
 )
 
-PAYMENT_METHODS_RU = [
+PAYMENT_RU = [
     "💎 CryptoBot (USDT)",
     "🔷 TRC20 (USDT)",
     "💎 Tonkeeper (TON)",
-    "🇺🇦 Карта — Украина (UAH)",
-    "🇷🇺 Карта — Россия (RUB)",
-    "🇺🇸 Карта — США (USD)",
-    "🇧🇾 Карта — Беларусь (BYN)",
-    "🇰🇿 Карта — Казахстан (KZT)",
-    "🇺🇿 Карта — Узбекистан (UZS)",
-    "🇹🇷 Карта — Турция (TRY)",
-    "🇦🇿 Карта — Азербайджан (AZN)",
+    "⭐ Telegram Stars",
+    "🇺🇦 Карта Украина (UAH)",
+    "🇷🇺 Карта Россия (RUB)",
+    "🇺🇸 Карта США (USD)",
+    "🇧🇾 Карта Беларусь (BYN)",
+    "🇰🇿 Карта Казахстан (KZT)",
+    "🇺🇿 Карта Узбекистан (UZS)",
+    "🇹🇷 Карта Турция (TRY)",
+    "🇦🇿 Карта Азербайджан (AZN)"
 ]
 
-PAYMENT_METHODS_EN = [
+PAYMENT_EN = [
     "💎 CryptoBot (USDT)",
     "🔷 TRC20 (USDT)",
     "💎 Tonkeeper (TON)",
-    "🇺🇦 Card — Ukraine (UAH)",
-    "🇷🇺 Card — Russia (RUB)",
-    "🇺🇸 Card — USA (USD)",
-    "🇧🇾 Card — Belarus (BYN)",
-    "🇰🇿 Card — Kazakhstan (KZT)",
-    "🇺🇿 Card — Uzbekistan (UZS)",
-    "🇹🇷 Card — Turkey (TRY)",
-    "🇦🇿 Card — Azerbaijan (AZN)",
+    "⭐ Telegram Stars",
+    "🇺🇦 Card Ukraine (UAH)",
+    "🇷🇺 Card Russia (RUB)",
+    "🇺🇸 Card USA (USD)",
+    "🇧🇾 Card Belarus (BYN)",
+    "🇰🇿 Card Kazakhstan (KZT)",
+    "🇺🇿 Card Uzbekistan (UZS)",
+    "🇹🇷 Card Turkey (TRY)",
+    "🇦🇿 Card Azerbaijan (AZN)"
 ]
 
 # ==================== KEYBOARDS ====================
-
-def lang_keyboard():
+def language_keyboard():
+    """Клавиатура выбора языка"""
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
-        InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
+        InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")
     ]])
 
-def main_menu_keyboard(lang):
+def main_keyboard(lang):
+    """Главное меню"""
     if lang == "ru":
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("💰 Продать NFT", callback_data="sell")],
-            [InlineKeyboardButton("⚙️ Как проводится сделка?", callback_data="how_deal")],
-            [InlineKeyboardButton("🆘 Поддержка", callback_data="support")],
+            [InlineKeyboardButton("💰 Продать NFT", callback_data="menu_sell")],
+            [InlineKeyboardButton("ℹ️ Как проходит сделка", callback_data="menu_how")],
+            [InlineKeyboardButton("🆘 Связаться с поддержкой", callback_data="menu_support")]
         ])
     else:
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("💰 Sell NFT", callback_data="sell")],
-            [InlineKeyboardButton("⚙️ How is the deal conducted?", callback_data="how_deal")],
-            [InlineKeyboardButton("🆘 Support", callback_data="support")],
+            [InlineKeyboardButton("💰 Sell NFT", callback_data="menu_sell")],
+            [InlineKeyboardButton("ℹ️ How it works", callback_data="menu_how")],
+            [InlineKeyboardButton("🆘 Contact support", callback_data="menu_support")]
         ])
 
 def payment_keyboard(lang):
-    methods = PAYMENT_METHODS_RU if lang == "ru" else PAYMENT_METHODS_EN
+    """Клавиатура выбора оплаты"""
+    methods = PAYMENT_RU if lang == "ru" else PAYMENT_EN
     buttons = []
+    
+    # Создаем кнопки для каждого метода оплаты
     for i, method in enumerate(methods):
-        buttons.append([InlineKeyboardButton(method, callback_data="pay_" + str(i))])
-    buttons.append([InlineKeyboardButton(
-        "◀️ Назад" if lang == "ru" else "◀️ Back", callback_data="back_main"
-    )])
+        callback = f"pay_{i}"
+        buttons.append([InlineKeyboardButton(method, callback_data=callback)])
+    
+    # Кнопка назад
+    back_text = "◀️ Назад в меню" if lang == "ru" else "◀️ Back to menu"
+    buttons.append([InlineKeyboardButton(back_text, callback_data="back_to_main")])
+    
     return InlineKeyboardMarkup(buttons)
 
 def confirm_keyboard(lang):
-    yes = "✅ Да, согласен" if lang == "ru" else "✅ Yes, I agree"
-    no = "❌ Нет" if lang == "ru" else "❌ No"
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(yes, callback_data="confirm_yes")],
-        [InlineKeyboardButton(no, callback_data="confirm_no")],
-    ])
+    """Клавиатура подтверждения"""
+    if lang == "ru":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Да, согласен", callback_data="confirm_yes")],
+            [InlineKeyboardButton("❌ Нет, отказаться", callback_data="confirm_no")]
+        ])
+    else:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Yes, I agree", callback_data="confirm_yes")],
+            [InlineKeyboardButton("❌ No, cancel", callback_data="confirm_no")]
+        ])
+
+def deal_keyboard(lang):
+    """Клавиатура для этапа сделки"""
+    if lang == "ru":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("💸 Я оплатил", callback_data="deal_paid")],
+            [InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")]
+        ])
+    else:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("💸 I paid", callback_data="deal_paid")],
+            [InlineKeyboardButton("🏠 Main menu", callback_data="back_to_main")]
+        ])
 
 def back_keyboard(lang):
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton(
-            "◀️ Главное меню" if lang == "ru" else "◀️ Main menu",
-            callback_data="back_main"
-        )
-    ]])
-
-def admin_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")],
-        [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("🖼 Изменить баннер", callback_data="admin_banner")],
-        [InlineKeyboardButton("💬 Все сделки", callback_data="admin_deals")],
-        [InlineKeyboardButton("🚫 Заблокировать юзера", callback_data="admin_ban")],
-    ])
-
-# ==================== HELPER ====================
-
-async def safe_edit(query, text, keyboard):
-    try:
-        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
-    except Exception:
-        try:
-            await query.edit_message_caption(caption=text, parse_mode="Markdown", reply_markup=keyboard)
-        except Exception as e:
-            logger.error("safe_edit failed: " + str(e))
+    """Клавиатура с кнопкой назад"""
+    text = "🏠 В главное меню" if lang == "ru" else "🏠 Main menu"
+    return InlineKeyboardMarkup([[InlineKeyboardButton(text, callback_data="back_to_main")]])
 
 # ==================== HANDLERS ====================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /start"""
     context.user_data.clear()
     await update.message.reply_text(
-        "🌍 Выберите язык / Choose your language:",
-        reply_markup=lang_keyboard()
+        "🌍 Выберите язык / Choose language:",
+        reply_markup=language_keyboard()
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик всех нажатий на кнопки"""
     query = update.callback_query
     await query.answer()
+    
     data = query.data
-    lang = get_lang(context)
-
+    lang = context.user_data.get("lang", "ru")
+    
+    print(f"Нажата кнопка: {data}")  # Для отладки
+    
+    # ========== ВЫБОР ЯЗЫКА ==========
     if data == "lang_ru":
         context.user_data["lang"] = "ru"
-        await safe_edit(query, WELCOME_RU, main_menu_keyboard("ru"))
+        await query.edit_message_text(
+            text=WELCOME_RU,
+            parse_mode="Markdown",
+            reply_markup=main_keyboard("ru")
+        )
         return
-
+    
     if data == "lang_en":
         context.user_data["lang"] = "en"
-        await safe_edit(query, WELCOME_EN, main_menu_keyboard("en"))
+        await query.edit_message_text(
+            text=WELCOME_EN,
+            parse_mode="Markdown",
+            reply_markup=main_keyboard("en")
+        )
         return
-
-    if data == "back_main":
+    
+    # ========== ВОЗВРАТ В ГЛАВНОЕ МЕНЮ ==========
+    if data == "back_to_main":
         text = WELCOME_RU if lang == "ru" else WELCOME_EN
-        await safe_edit(query, text, main_menu_keyboard(lang))
-        context.user_data.pop("state", None)
+        await query.edit_message_text(
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=main_keyboard(lang)
+        )
+        context.user_data.clear()
         return
-
-    if data == "how_deal":
+    
+    # ========== КАК ПРОХОДИТ СДЕЛКА ==========
+    if data == "menu_how":
         text = HOW_DEAL_RU if lang == "ru" else HOW_DEAL_EN
-        await safe_edit(query, text, back_keyboard(lang))
+        await query.edit_message_text(
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=back_keyboard(lang)
+        )
         return
-
-    if data == "support":
+    
+    # ========== ПОДДЕРЖКА ==========
+    if data == "menu_support":
         if lang == "ru":
-            text = "🆘 *Поддержка*\n\nПо всем вопросам обращайтесь к менеджеру: " + MANAGER + "\n\nМы работаем 24/7 и ответим вам в течение нескольких минут!"
+            text = f"🆘 *Поддержка*\n\nПо всем вопросам обращайтесь к менеджеру:\n{MANAGER}"
         else:
-            text = "🆘 *Support*\n\nFor all questions, contact the manager: " + MANAGER + "\n\nWe work 24/7 and will reply within minutes!"
-        await safe_edit(query, text, back_keyboard(lang))
+            text = f"🆘 *Support*\n\nFor all questions, contact the manager:\n{MANAGER}"
+        await query.edit_message_text(
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=back_keyboard(lang)
+        )
         return
-
-    if data == "sell":
+    
+    # ========== ПРОДАЖА NFT ==========
+    if data == "menu_sell":
         context.user_data["state"] = WAITING_NFT_LINK
-        text = SELL_ASK_LINK_RU if lang == "ru" else SELL_ASK_LINK_EN
-        await safe_edit(query, text, back_keyboard(lang))
+        text = SELL_ASK_RU if lang == "ru" else SELL_ASK_EN
+        await query.edit_message_text(
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=back_keyboard(lang)
+        )
         return
-
+    
+    # ========== ВЫБОР СПОСОБА ОПЛАТЫ ==========
     if data.startswith("pay_"):
-        idx = int(data.split("_")[1])
-        methods = PAYMENT_METHODS_RU if lang == "ru" else PAYMENT_METHODS_EN
-        method = methods[idx]
-        context.user_data["payment"] = method
-        context.user_data["pay_idx"] = idx
-        context.user_data["state"] = WAITING_REQUISITES
-
-        nft_link = context.user_data.get("nft_link", "https://t.me/nft/PlushPepe-2133")
-        base_usd = context.user_data.get("base_price", 5)
-        our_usd = context.user_data.get("our_price", 6.5)
-
-        price_str = format_price(our_usd, idx)
-        market_str = format_price(base_usd, idx)
-
-        if lang == "ru":
-            text = (
-                "💳 *Способ оплаты:* " + method + "\n\n"
-                "📎 *Ваш NFT:* `" + nft_link + "`\n"
-                "🏷 Рыночная стоимость: ~" + market_str + "\n"
-                "💰 *Наше предложение: " + price_str + " (+30%)*\n\n"
-                "📝 Введите ваши реквизиты для получения оплаты:"
+        try:
+            idx = int(data.split("_")[1])
+            context.user_data["pay_idx"] = idx
+            context.user_data["payment"] = (PAYMENT_RU if lang == "ru" else PAYMENT_EN)[idx]
+            context.user_data["state"] = WAITING_REQUISITES
+            
+            nft_link = context.user_data.get("nft_link", "NFT")
+            our_price = context.user_data.get("our_price", 0)
+            price_str = format_price(our_price, idx)
+            
+            if lang == "ru":
+                text = (
+                    f"💳 *Выбранный способ:* {context.user_data['payment']}\n\n"
+                    f"📎 *NFT:* `{nft_link}`\n"
+                    f"💰 *Сумма к выплате:* {price_str}\n\n"
+                    f"📝 *Введите ваши реквизиты* для получения оплаты\n"
+                    f"(номер карты, адрес кошелька и т.д.):"
+                )
+            else:
+                text = (
+                    f"💳 *Selected method:* {context.user_data['payment']}\n\n"
+                    f"📎 *NFT:* `{nft_link}`\n"
+                    f"💰 *Payout amount:* {price_str}\n\n"
+                    f"📝 *Enter your payment details*\n"
+                    f"(card number, wallet address, etc.):"
+                )
+            
+            await query.edit_message_text(
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=back_keyboard(lang)
             )
-        else:
-            text = (
-                "💳 *Payment method:* " + method + "\n\n"
-                "📎 *Your NFT:* `" + nft_link + "`\n"
-                "🏷 Market value: ~" + market_str + "\n"
-                "💰 *Our offer: " + price_str + " (+30%)*\n\n"
-                "📝 Enter your payment details:"
-            )
-        await safe_edit(query, text, back_keyboard(lang))
+        except Exception as e:
+            logger.error(f"Ошибка в pay_: {e}")
         return
-
+    
+    # ========== ПОДТВЕРЖДЕНИЕ "ДА" ==========
     if data == "confirm_yes":
         nft_link = context.user_data.get("nft_link", "")
-        our_usd = context.user_data.get("our_price", 0)
+        our_price = context.user_data.get("our_price", 0)
         pay_idx = context.user_data.get("pay_idx", 0)
-        price_str = format_price(our_usd, pay_idx)
+        price_str = format_price(our_price, pay_idx)
         payment = context.user_data.get("payment", "")
-
+        requisites = context.user_data.get("requisites", "")
+        
         if lang == "ru":
             text = (
-                "✅ *Отлично! Сделка принята.*\n\n"
-                "Теперь вам нужно отправить ваш NFT менеджеру " + MANAGER + "\n\n"
-                "📎 NFT: `" + nft_link + "`\n"
-                "💵 Сумма выплаты: *" + price_str + "*\n"
-                "💳 Способ оплаты: " + payment + "\n\n"
-                "После получения NFT менеджер переведёт вам оплату в течение 5–15 минут.\n\n"
-                "⚠️ Важно: передавайте NFT ТОЛЬКО через " + MANAGER + ". "
-                "Мы не несём ответственности за сделки вне официального канала."
+                f"✅ *Сделка подтверждена!*\n\n"
+                f"📎 *NFT:* `{nft_link}`\n"
+                f"💰 *Сумма:* {price_str}\n"
+                f"💳 *Способ:* {payment}\n"
+                f"📝 *Реквизиты:* `{requisites}`\n\n"
+                f"📤 *Отправьте ваш NFT менеджеру:* {MANAGER}\n\n"
+                f"После того как менеджер отправит оплату, нажмите кнопку ниже 👇"
             )
         else:
             text = (
-                "✅ *Great! Deal accepted.*\n\n"
-                "Now you need to send your NFT to the manager " + MANAGER + "\n\n"
-                "📎 NFT: `" + nft_link + "`\n"
-                "💵 Payout amount: *" + price_str + "*\n"
-                "💳 Payment method: " + payment + "\n\n"
-                "After receiving the NFT, the manager will transfer payment within 5–15 minutes.\n\n"
-                "⚠️ Important: transfer the NFT ONLY via " + MANAGER + ". "
-                "We are not responsible for deals outside the official channel."
+                f"✅ *Deal confirmed!*\n\n"
+                f"📎 *NFT:* `{nft_link}`\n"
+                f"💰 *Amount:* {price_str}\n"
+                f"💳 *Method:* {payment}\n"
+                f"📝 *Details:* `{requisites}`\n\n"
+                f"📤 *Send your NFT to manager:* {MANAGER}\n\n"
+                f"After the manager sends payment, press the button below 👇"
             )
-        await safe_edit(query, text, back_keyboard(lang))
-        context.user_data["state"] = None
-
+        
+        await query.edit_message_text(
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=deal_keyboard(lang)
+        )
+        context.user_data["state"] = WAITING_PAYMENT_CONFIRMATION
+        
+        # Уведомление админам
         user = query.from_user
         admin_text = (
-            "🔔 *Новая сделка!*\n"
-            "👤 Пользователь: @" + str(user.username or user.id) + " (" + str(user.id) + ")\n"
-            "📎 NFT: " + nft_link + "\n"
-            "💵 Сумма: " + price_str + "\n"
-            "💳 Метод: " + payment
+            f"🔔 *НОВАЯ СДЕЛКА!*\n"
+            f"👤 Пользователь: @{user.username or user.id} (ID: {user.id})\n"
+            f"📎 NFT: {nft_link}\n"
+            f"💰 Сумма: {price_str}\n"
+            f"💳 Метод: {payment}\n"
+            f"📝 Реквизиты: {requisites}"
         )
-        try:
-            for admin_id in ADMIN_IDS:
+        for admin_id in ADMIN_IDS:
+            try:
                 await context.bot.send_message(admin_id, admin_text, parse_mode="Markdown")
-        except Exception as e:
-            logger.error("Admin notify failed: " + str(e))
+            except Exception as e:
+                logger.error(f"Не удалось отправить админу {admin_id}: {e}")
         return
-
+    
+    # ========== ПОДТВЕРЖДЕНИЕ "НЕТ" ==========
     if data == "confirm_no":
         if lang == "ru":
-            text = "❌ Вы отказались от сделки. Если передумаете — мы всегда готовы!\n\nВозвращайтесь в главное меню 👇"
+            text = "❌ Сделка отменена. Возвращаю в главное меню."
         else:
-            text = "❌ You declined the deal. If you change your mind — we're always ready!\n\nReturn to the main menu 👇"
-        await safe_edit(query, text, back_keyboard(lang))
-        context.user_data["state"] = None
-        return
-
-    # ==================== ADMIN PANEL ====================
-    if data == "admin_stats":
-        await safe_edit(
-            query,
-            "📊 *Статистика бота*\n\n"
-            "👥 Пользователей: —\n"
-            "💰 Сделок: —\n"
-            "📈 Объём выплат: —\n\n"
-            "_Подключите БД для реальной статистики_",
-            admin_keyboard()
+            text = "❌ Deal cancelled. Returning to main menu."
+        
+        await query.edit_message_text(
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=back_keyboard(lang)
         )
+        context.user_data.clear()
         return
-
-    if data == "admin_broadcast":
-        await safe_edit(
-            query,
-            "📢 *Рассылка*\n\nДля рассылки подключите базу данных и сохраняйте user\\_id пользователей.",
-            admin_keyboard()
+    
+    # ========== КНОПКА "Я ОПЛАТИЛ" ==========
+    if data == "deal_paid":
+        nft_link = context.user_data.get("nft_link", "")
+        our_price = context.user_data.get("our_price", 0)
+        pay_idx = context.user_data.get("pay_idx", 0)
+        price_str = format_price(our_price, pay_idx)
+        
+        if lang == "ru":
+            text = (
+                f"💸 *Спасибо за подтверждение!*\n\n"
+                f"Менеджер {MANAGER} уже получил уведомление о том, что вы получили оплату.\n\n"
+                f"📎 NFT: `{nft_link}`\n"
+                f"💰 Сумма: {price_str}\n\n"
+                f"Если у вас возникнут вопросы, обратитесь к менеджеру."
+            )
+        else:
+            text = (
+                f"💸 *Thank you for confirmation!*\n\n"
+                f"Manager {MANAGER} has been notified that you received payment.\n\n"
+                f"📎 NFT: `{nft_link}`\n"
+                f"💰 Amount: {price_str}\n\n"
+                f"If you have any questions, contact the manager."
+            )
+        
+        await query.edit_message_text(
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=back_keyboard(lang)
         )
-        return
-
-    if data == "admin_banner":
-        await safe_edit(
-            query,
-            "🖼 *Изменение баннера*\n\nОтправьте новое фото боту. (Требует реализации хранилища)",
-            admin_keyboard()
+        
+        # Уведомление админам
+        user = query.from_user
+        admin_text = (
+            f"💰 *ПОДТВЕРЖДЕНИЕ ОПЛАТЫ!*\n"
+            f"👤 Пользователь: @{user.username or user.id} (ID: {user.id})\n"
+            f"📎 NFT: {nft_link}\n"
+            f"💰 Сумма: {price_str}\n"
+            f"✅ Пользователь подтвердил получение оплаты"
         )
-        return
-
-    if data == "admin_deals":
-        await safe_edit(
-            query,
-            "💬 *Все сделки*\n\nПодключите базу данных для просмотра истории сделок.",
-            admin_keyboard()
-        )
-        return
-
-    if data == "admin_ban":
-        await safe_edit(
-            query,
-            "🚫 *Блокировка*\n\nВведите /ban USER\\_ID для блокировки пользователя.",
-            admin_keyboard()
-        )
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(admin_id, admin_text, parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"Не удалось отправить админу {admin_id}: {e}")
+        
+        context.user_data.clear()
         return
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик текстовых сообщений"""
     state = context.user_data.get("state")
-    lang = get_lang(context)
+    lang = context.user_data.get("lang", "ru")
     text = update.message.text.strip()
-
+    
+    # ========== ОЖИДАНИЕ ССЫЛКИ НА NFT ==========
     if state == WAITING_NFT_LINK:
         if not is_nft_link(text):
             if lang == "ru":
-                err = "⚠️ *Ошибка!* Это не похоже на ссылку NFT-подарка.\n\nПожалуйста, отправьте корректную ссылку:\n`https://t.me/nft/НазваниеНФТ-Номер`"
+                err = "❌ *Ошибка!* Это не похоже на ссылку NFT-подарка.\n\nОтправьте ссылку в формате:\n`https://t.me/nft/Название-Номер`"
             else:
-                err = "⚠️ *Error!* This doesn't look like an NFT gift link.\n\nPlease send a valid link:\n`https://t.me/nft/NFTName-Number`"
+                err = "❌ *Error!* This doesn't look like an NFT gift link.\n\nSend a link in format:\n`https://t.me/nft/Name-Number`"
             await update.message.reply_text(err, parse_mode="Markdown")
             return
-
-        context.user_data["nft_link"] = text
+        
+        # Получаем название NFT из ссылки
         nft_name = text.split("/nft/")[-1].split("-")[0]
-        base_usd, our_usd = estimate_price_usd(nft_name)
-        context.user_data["base_price"] = base_usd
-        context.user_data["our_price"] = our_usd
+        
+        # Получаем рыночную цену
+        market_price, our_price = get_price(nft_name)
+        
+        context.user_data["nft_link"] = text
+        context.user_data["market_price"] = market_price
+        context.user_data["our_price"] = our_price
         context.user_data["state"] = WAITING_PAYMENT_METHOD
-
+        
         if lang == "ru":
             msg = (
-                "🔍 *Анализ NFT завершён!*\n\n"
-                "📎 NFT: `" + text + "`\n"
-                "🏷 Рыночная стоимость: ~$" + str(base_usd) + " USDT\n"
-                "💰 *Наше предложение: $" + str(our_usd) + " USDT (+30%)*\n\n"
-                "Выберите способ получения оплаты — сумма будет пересчитана в вашу валюту 👇"
+                f"🔍 *Анализ NFT завершен!*\n\n"
+                f"📎 *Ссылка:* `{text}`\n"
+                f"📊 *Рыночная цена:* ${market_price}\n"
+                f"💰 *Наше предложение:* ${our_price} (+30%)\n\n"
+                f"Выберите способ получения оплаты ниже 👇"
             )
         else:
             msg = (
-                "🔍 *NFT Analysis complete!*\n\n"
-                "📎 NFT: `" + text + "`\n"
-                "🏷 Market value: ~$" + str(base_usd) + " USDT\n"
-                "💰 *Our offer: $" + str(our_usd) + " USDT (+30%)*\n\n"
-                "Choose your payment method — the amount will be converted to your currency 👇"
+                f"🔍 *NFT Analysis Complete!*\n\n"
+                f"📎 *Link:* `{text}`\n"
+                f"📊 *Market Price:* ${market_price}\n"
+                f"💰 *Our Offer:* ${our_price} (+30%)\n\n"
+                f"Choose payment method below 👇"
             )
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=payment_keyboard(lang))
+        
+        await update.message.reply_text(
+            text=msg,
+            parse_mode="Markdown",
+            reply_markup=payment_keyboard(lang)
+        )
         return
-
+    
+    # ========== ОЖИДАНИЕ РЕКВИЗИТОВ ==========
     if state == WAITING_REQUISITES:
         context.user_data["requisites"] = text
+        context.user_data["state"] = None
+        
         nft_link = context.user_data.get("nft_link", "")
-        our_usd = context.user_data.get("our_price", 0)
-        base_usd = context.user_data.get("base_price", 0)
+        our_price = context.user_data.get("our_price", 0)
+        market_price = context.user_data.get("market_price", 0)
         pay_idx = context.user_data.get("pay_idx", 0)
         payment = context.user_data.get("payment", "")
-        context.user_data["state"] = None
-
-        price_str = format_price(our_usd, pay_idx)
-        market_str = format_price(base_usd, pay_idx)
-
+        
+        price_str = format_price(our_price, pay_idx)
+        market_str = format_price(market_price, pay_idx)
+        
         if lang == "ru":
             msg = (
-                "📋 *Итог сделки:*\n\n"
-                "📎 NFT: `" + nft_link + "`\n"
-                "💳 Способ оплаты: " + payment + "\n"
-                "🏷 Рынок: ~" + market_str + "\n"
-                "💵 Сумма: *" + price_str + "*\n"
-                "📝 Реквизиты: `" + text + "`\n\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "💬 Я предлагаю вам за ваш NFT `" + nft_link + "` сумму *" + price_str + "*\n\n"
-                "Если согласны — нажмите *Да*, если нет — *Нет* 👇"
+                f"📋 *Итог сделки:*\n\n"
+                f"📎 *NFT:* `{nft_link}`\n"
+                f"💳 *Способ оплаты:* {payment}\n"
+                f"📊 *Рыночная цена:* {market_str}\n"
+                f"💰 *Сумма к выплате:* {price_str}\n"
+                f"📝 *Ваши реквизиты:* `{text}`\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"💬 Я предлагаю вам за ваш NFT `{nft_link}` сумму *{price_str}*\n\n"
+                f"Подтверждаете сделку?"
             )
         else:
             msg = (
-                "📋 *Deal summary:*\n\n"
-                "📎 NFT: `" + nft_link + "`\n"
-                "💳 Payment method: " + payment + "\n"
-                "🏷 Market: ~" + market_str + "\n"
-                "💵 Amount: *" + price_str + "*\n"
-                "📝 Details: `" + text + "`\n\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "💬 I offer you for your NFT `" + nft_link + "` the sum of *" + price_str + "*\n\n"
-                "If you agree — press *Yes*, if not — *No* 👇"
+                f"📋 *Deal Summary:*\n\n"
+                f"📎 *NFT:* `{nft_link}`\n"
+                f"💳 *Payment Method:* {payment}\n"
+                f"📊 *Market Price:* {market_str}\n"
+                f"💰 *Payout Amount:* {price_str}\n"
+                f"📝 *Your Details:* `{text}`\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"💬 I offer you for your NFT `{nft_link}` the amount *{price_str}*\n\n"
+                f"Do you confirm the deal?"
             )
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=confirm_keyboard(lang))
-        return
-
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Доступ запрещён.")
-        return
-
-    caption = (
-        "🛡 *ADMIN PANEL*\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🤖 NFT Auto-Buyout Bot\n"
-        "👥 Управление пользователями\n"
-        "💰 Контроль сделок\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Выберите действие:"
-    )
-    banner_url = "https://telegra.ph/file/562db3a3a06a4c4a35b71.jpg"
-    try:
-        await update.message.reply_photo(
-            photo=banner_url,
-            caption=caption,
+        
+        await update.message.reply_text(
+            text=msg,
             parse_mode="Markdown",
-            reply_markup=admin_keyboard()
+            reply_markup=confirm_keyboard(lang)
         )
-    except Exception:
-        await update.message.reply_text(caption, parse_mode="Markdown", reply_markup=admin_keyboard())
+        return
 
 def main():
+    """Запуск бота"""
     app = Application.builder().token(BOT_TOKEN).build()
+    
+    # Регистрируем обработчики
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-    print("Bot started...")
+    
+    print("✅ Бот успешно запущен!")
+    print(f"👤 Менеджер: {MANAGER}")
+    print(f"👥 Админы: {ADMIN_IDS}")
+    print("🔄 Кнопки должны работать")
+    
     app.run_polling()
 
 if __name__ == "__main__":
